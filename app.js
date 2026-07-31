@@ -393,23 +393,18 @@ function renderStats() {
   const row = document.getElementById('statsRow');
   const total = state.items.length;
 
-  // Top category by count
-  const catCounts = {};
-  state.items.forEach(i => {
-    const k = i.category?.name ?? '?';
-    catCounts[k] = (catCounts[k] ?? 0) + 1;
-  });
-  const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0];
-
-  // Count at wash
-  const toWash = state.items.filter(i => i.location?.name === 'Lavare').length;
+  const inUso    = state.items.filter(i => i.location?.name === 'In uso').length;
+  const daLavare = state.items.filter(i => i.location?.name === 'Lavare').length;
+  // "Lavati" = tutto tranne in uso e da lavare (armadio, valigie, zaino, posizione nulla…)
+  const lavati   = total - inUso - daLavare;
 
   row.innerHTML = '';
 
   const stats = [
-    { value: total, label: 'Capi totali' },
-    { value: topCat ? `${state.categories.find(c => c.name === topCat[0])?.icon ?? ''} ${topCat[1]}` : '—', label: `+ ${topCat?.[0] ?? ''}` },
-    { value: toWash, label: 'Da lavare' },
+    { value: total,    label: 'Capi totali' },
+    { value: inUso,    label: 'In uso' },
+    { value: daLavare, label: 'Da lavare' },
+    { value: lavati,   label: 'Lavati' },
   ];
 
   stats.forEach(s => {
