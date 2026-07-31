@@ -20,6 +20,7 @@ const state = {
   locations: [],
   view: 'category',   // 'category' | 'location'
   query: '',
+  activeFilter: null, // id of the active category/location chip filter (null = all)
   openGroups: new Set(), // keys of expanded accordion groups
   loading: false,
   error: null,
@@ -249,6 +250,51 @@ function buildGroup(key, icon, name, items) {
   return group;
 }
 
+// ─── Filter chips ────────────────────────────────────────────────────────────
+
+function renderFilterChips() {
+  const container = document.getElementById('filterChips');
+  container.innerHTML = '';
+
+  const groups = state.view === 'category' ? state.categories : state.locations;
+  if (!groups.length) return;
+
+  // "Tutti" chip
+  const allBtn = document.createElement('button');
+  allBtn.type = 'button';
+  allBtn.className = 'chip' + (state.activeFilter === null ? ' chip--active' : '');
+  allBtn.textContent = 'Tutti';
+  allBtn.addEventListener('click', () => {
+    state.activeFilter = null;
+    renderFilterChips();
+    render();
+  });
+  container.appendChild(allBtn);
+
+  // One chip per group that has at least one item
+  const usedIds = new Set(
+    state.items.map(i => (state.view === 'category' ? i.category?.id : i.location?.id))
+  );
+
+  groups.forEach(g => {
+    if (!usedIds.has(g.id)) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chip' + (state.activeFilter === g.id ? ' chip--active' : '');
+    btn.textContent = (g.icon ? g.icon + ' ' : '') + g.name;
+    btn.addEventListener('click', () => {
+      state.activeFilter = state.activeFilter === g.id ? null : g.id;
+      // When a filter is active, expand its group automatically
+      if (state.activeFilter !== null) {
+        state.openGroups.add(state.activeFilter);
+      }
+      renderFilterChips();
+      render();
+    });
+    container.appendChild(btn);
+  });
+}
+
 // ─── Main render ─────────────────────────────────────────────────────────────
 
 function render() {
@@ -268,13 +314,24 @@ function render() {
   errorState.hidden = true;
 
   const q = state.query;
-  const filtered = state.items.filter(i => matchesQuery(i, q));
+  const searching = q.length > 0;
+
+  // Apply text search first, then chip filter (only outside search mode)
+  let filtered = state.items.filter(i => matchesQuery(i, q));
+  if (!searching && state.activeFilter !== null) {
+    filtered = filtered.filter(i =>
+      state.view === 'category'
+        ? i.category?.id === state.activeFilter
+        : i.location?.id === state.activeFilter
+    );
+  }
 
   // ── Stats (always based on full dataset) ──────────────────────────────────
   renderStats();
 
-  // ── Toggle disable during search ──────────────────────────────────────────
-  viewToggle.classList.toggle('is-disabled', q.length > 0);
+  // ── Toggle and chips: disable / hide during search ────────────────────────
+  viewToggle.classList.toggle('is-disabled', searching);
+  document.getElementById('filterChips').classList.toggle('chips--hidden', searching);
 
   // Empty
   if (filtered.length === 0) {
@@ -478,6 +535,7 @@ async function loadData() {
 
     const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
     setSyncLine(`Aggiornato alle ${now} · ${state.items.length} capi`);
+    renderFilterChips();
     render();
   } catch (err) {
     state.error = err;
@@ -522,6 +580,7 @@ function initEvents() {
     });
 
     state.view = btn.dataset.view;
+    state.activeFilter = null;
     // Re-compute open groups for new view dimension
     state.openGroups.clear();
     const keys = state.view === 'category'
@@ -529,6 +588,7 @@ function initEvents() {
       : state.locations.map(l => l.id);
     keys.forEach(k => state.openGroups.add(k));
 
+    renderFilterChips();
     render();
   });
 

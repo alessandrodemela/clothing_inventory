@@ -14,7 +14,7 @@ Dashboard personale per consultare l'inventario del guardaroba dal telefono.
   - *"Metti le scarpe da running nella valigia grande"*
   - *"Dove sono gli occhiali da sole?"*
 - **Zero dipendenze di build** — si apre direttamente nel browser, nessun `npm install`
-- **3 file** — `index.html`, `style.css`, `app.js`. Tutto qui.
+- **3 file** — `index.html`, `style.css`, `app.js`. Tutto qui (più `manifest.json`, `sw.js` per la PWA).
 
 ---
 
@@ -93,7 +93,15 @@ Aggiungi una felpa grigia Carhartt taglia L, posizione Armadio
 
 ### Ricerca
 
-La barra di ricerca filtra in tempo reale su: **nome**, **categoria**, **colore**, **marca**.
+La barra di ricerca filtra in tempo reale su: **nome**, **categoria**, **colore**, **marca**. Durante la ricerca i chip e il toggle vengono nascosti automaticamente.
+
+### Filtro rapido (chip)
+
+Subito sotto il toggle compare una riga di chip scorrevole orizzontalmente:
+- **Tutti** — mostra tutti i capi (default)
+- **Un chip per ogni categoria/posizione** presente nel guardaroba — tocca per filtrare istantaneamente
+
+I chip cambiano insieme al toggle: passando a "Per posizione" mostrano le posizioni, passando a "Per categoria" mostrano le categorie.
 
 ### Gruppi
 
@@ -134,8 +142,8 @@ db.from('locations')
 
 Possibili iterazioni future senza stravolgere l'architettura:
 
-- **Filtri rapidi** per posizione (chip row sotto la search)
+- ~~**Filtri rapidi** per posizione (chip row sotto la search)~~ ✅ implementato
+- ~~**PWA** — aggiungere `manifest.json` + service worker per uso offline~~ ✅ implementato
 - **Ordinamento** per data aggiornamento / nome / brand
-- **PWA** — aggiungere `manifest.json` + service worker per uso offline
 - **Import CSV** — caricare un export dal cassetto via drag & drop
 - **Foto capo** — colonna `image_url` su `clothing_items` + upload su Supabase Storage
