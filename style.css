@@ -491,6 +491,11 @@ button, input {
   transition: opacity 0.2s ease;
 }
 
+/* display:flex overrides the [hidden] attribute — force it back */
+.sheet-overlay[hidden] {
+  display: none;
+}
+
 .sheet-overlay.is-visible {
   opacity: 1;
 }
