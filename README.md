@@ -79,6 +79,15 @@ Un trigger PostgreSQL aggiorna `updated_at` automaticamente ad ogni modifica.
 
 Apri `index.html` in un browser. Non serve un server locale — il client Supabase opera via HTTPS direttamente.
 
+**⚠️ Importante**: per usare la selezione multipla e muovere capi da app, aggiungi una policy RLS su `clothing_items_test` che permette `UPDATE` alla anon key:
+```sql
+CREATE POLICY "Allow anon UPDATE" 
+  ON clothing_items_test 
+  FOR UPDATE 
+  USING (auth.role() = 'anon') 
+  WITH CHECK (auth.role() = 'anon');
+```
+
 ### Modificare i dati
 
 Usa Claude con il connettore Supabase MCP. Esempi:
@@ -102,6 +111,17 @@ Subito sotto il toggle compare una riga di chip scorrevole orizzontalmente:
 - **Un chip per ogni categoria/posizione** presente nel guardaroba — tocca per filtrare istantaneamente
 
 I chip cambiano insieme al toggle: passando a "Per posizione" mostrano le posizioni, passando a "Per categoria" mostrano le categorie.
+
+### Selezione multipla e azioni bulk
+
+**Long-press** (mezzo secondo) su un capo per entrare in **modalità selezione**. Una barra grigia appare in basso con:
+- Contatore di capi selezionati
+- Pulsanti per **tutte le posizioni** disponibili nel guardaroba
+- Tasto "Annulla" per uscire
+
+Tap sui capi per aggiungerli/toglierli dalla selezione. Una volta selezionati, tappa una posizione per spostarli tutti in un colpo.
+
+**Swipe a sinistra** su un singolo capo (fuori da selezione multipla) rivela un'azione rapida 🧺 che mette il capo direttamente a lavare. Utile quando sei in vacanza e serve una mossa veloce.
 
 ### Gruppi
 

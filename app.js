@@ -22,6 +22,8 @@ const state = {
   query: '',
   activeFilter: null, // id of the active category/location chip filter (null = all)
   openGroups: new Set(), // keys of expanded accordion groups
+  selectedIds: new Set(), // item ids selected in bulk-select mode
+  selecting: false,       // whether bulk-select mode is active
   loading: false,
   error: null,
 };
@@ -106,6 +108,85 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// ─── Bulk move ───────────────────────────────────────────────────────────────
+
+async function bulkMoveTo(locationId, ids) {
+  const targetIds = ids ?? [...state.selectedIds];
+  if (!targetIds.length) return;
+
+  const { error } = await db
+    .from('clothing_items_test')
+    .update({ location_id: locationId })
+    .in('id', targetIds);
+
+  if (error) { alert('Errore: ' + error.message); return; }
+
+  exitSelectMode();
+  await loadData();
+}
+
+// ─── Selection mode ───────────────────────────────────────────────────────────
+
+function enterSelectMode(firstItemId) {
+  state.selecting = true;
+  state.selectedIds.clear();
+  state.selectedIds.add(firstItemId);
+  document.body.classList.add('is-selecting');
+  updateSelectVisuals();
+  showBulkBar();
+}
+
+function exitSelectMode() {
+  state.selecting = false;
+  state.selectedIds.clear();
+  document.body.classList.remove('is-selecting');
+  updateSelectVisuals();
+  hideBulkBar();
+}
+
+function toggleSelect(itemId) {
+  if (state.selectedIds.has(itemId)) {
+    state.selectedIds.delete(itemId);
+    if (state.selectedIds.size === 0) { exitSelectMode(); return; }
+  } else {
+    state.selectedIds.add(itemId);
+  }
+  updateSelectVisuals();
+}
+
+function updateSelectVisuals() {
+  document.querySelectorAll('.swipe-wrap').forEach(wrap => {
+    wrap.classList.toggle('is-selected', state.selectedIds.has(wrap.dataset.id));
+  });
+  const countEl = document.getElementById('bulkCount');
+  if (countEl) {
+    const n = state.selectedIds.size;
+    countEl.textContent = `${n} selezionat${n === 1 ? 'o' : 'i'}`;
+  }
+}
+
+function showBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  const locsEl = document.getElementById('bulkLocations');
+  locsEl.innerHTML = '';
+  state.locations.forEach(loc => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'bulk-loc-btn';
+    btn.textContent = (loc.icon ? loc.icon + ' ' : '') + loc.name;
+    btn.addEventListener('click', () => bulkMoveTo(loc.id));
+    locsEl.appendChild(btn);
+  });
+  bar.hidden = false;
+  requestAnimationFrame(() => bar.classList.add('is-visible'));
+}
+
+function hideBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  bar.classList.remove('is-visible');
+  bar.addEventListener('transitionend', () => { bar.hidden = true; }, { once: true });
+}
+
 // ─── Rendering helpers ───────────────────────────────────────────────────────
 
 /**
@@ -122,22 +203,38 @@ function tagEl(label, emoji = null, hue = null) {
   return span;
 }
 
-/** Build a single item row <button> */
+/** Build a single item row wrapped in a swipe container */
 function buildItemRow(item) {
+  // ── Swipe wrapper ─────────────────────────────────────────────────────────
+  const wrap = document.createElement('div');
+  wrap.className = 'swipe-wrap';
+  wrap.dataset.id = item.id;
+  if (state.selectedIds.has(item.id)) wrap.classList.add('is-selected');
+
+  // Hidden action revealed by swiping left
+  const swipeAct = document.createElement('div');
+  swipeAct.className = 'swipe-action';
+  swipeAct.setAttribute('aria-hidden', 'true');
+  swipeAct.textContent = '🧺';
+
+  // ── Item button ───────────────────────────────────────────────────────────
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'item-row';
   btn.dataset.id = item.id;
 
+  // Selection checkbox (shown via CSS when body.is-selecting)
+  const check = document.createElement('span');
+  check.className = 'item-check';
+  check.setAttribute('aria-hidden', 'true');
+
   const colorCSS = colorToCSS(item.color);
 
-  // Swatch
   const swatch = document.createElement('span');
   swatch.className = 'swatch';
   swatch.style.background = colorCSS;
   swatch.setAttribute('aria-hidden', 'true');
 
-  // Info
   const info = document.createElement('span');
   info.className = 'info';
 
@@ -152,30 +249,97 @@ function buildItemRow(item) {
   if (item.brand) parts.push(item.brand);
   if (item.size)  parts.push(item.size);
   if (item.color) parts.push(item.color);
-
   metaEl.textContent = parts.join(' · ');
 
   info.append(nameEl, metaEl);
 
-  // Right side: hang-tag for the "other" dimension
   const tagWrap = document.createElement('span');
   if (state.view === 'category') {
     const loc = item.location;
-    if (loc) {
-      const hue = hueFromString(loc.name);
-      tagWrap.appendChild(tagEl(loc.name, loc.icon ?? null, hue));
-    }
+    if (loc) tagWrap.appendChild(tagEl(loc.name, loc.icon ?? null, hueFromString(loc.name)));
   } else {
     const cat = item.category;
-    if (cat) {
-      const hue = hueFromString(cat.name);
-      tagWrap.appendChild(tagEl(cat.name, cat.icon ?? null, hue));
-    }
+    if (cat) tagWrap.appendChild(tagEl(cat.name, cat.icon ?? null, hueFromString(cat.name)));
   }
 
-  btn.append(swatch, info, tagWrap);
-  btn.addEventListener('click', () => openSheet(item));
-  return btn;
+  btn.append(check, swatch, info, tagWrap);
+
+  // ── Touch: long-press + swipe-left ────────────────────────────────────────
+  let lpTimer = null;
+  let t0x = 0, t0y = 0;
+  let swipeMode = false, swipeRevealed = false;
+
+  btn.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    t0x = t.clientX; t0y = t.clientY;
+    swipeMode = false;
+
+    lpTimer = setTimeout(() => {
+      lpTimer = null;
+      if (swipeMode) return;
+      navigator.vibrate?.(30);
+      if (!state.selecting) enterSelectMode(item.id);
+      else toggleSelect(item.id);
+    }, 500);
+  }, { passive: true });
+
+  btn.addEventListener('touchmove', e => {
+    const t = e.touches[0];
+    const dx = t.clientX - t0x;
+    const dy = t.clientY - t0y;
+
+    // Vertical scroll cancels everything
+    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+      clearTimeout(lpTimer); lpTimer = null;
+      return;
+    }
+    // Swipe left (only outside selection mode)
+    if (dx < -8 && !state.selecting) {
+      swipeMode = true;
+      clearTimeout(lpTimer); lpTimer = null;
+      const offset = Math.max(dx, -72);
+      btn.style.transform = `translateX(${offset}px)`;
+      swipeAct.style.opacity = Math.min(1, Math.abs(offset) / 72).toFixed(2);
+    }
+  }, { passive: true });
+
+  btn.addEventListener('touchend', e => {
+    clearTimeout(lpTimer); lpTimer = null;
+    if (swipeMode) {
+      const dx = e.changedTouches[0].clientX - t0x;
+      if (dx < -52) {
+        btn.style.transform = 'translateX(-72px)';
+        swipeAct.style.opacity = '1';
+        swipeRevealed = true;
+      } else {
+        btn.style.transform = '';
+        swipeAct.style.opacity = '0';
+        swipeRevealed = false;
+      }
+      swipeMode = false;
+    }
+  });
+
+  // ── Click ─────────────────────────────────────────────────────────────────
+  btn.addEventListener('click', () => {
+    if (swipeRevealed) {
+      btn.style.transform = '';
+      swipeAct.style.opacity = '0';
+      swipeRevealed = false;
+      return;
+    }
+    if (state.selecting) toggleSelect(item.id);
+    else openSheet(item);
+  });
+
+  // ── Swipe action tap → metti a lavare ────────────────────────────────────
+  swipeAct.addEventListener('click', () => {
+    const lavare = state.locations.find(l => l.name === 'Lavare');
+    if (lavare) bulkMoveTo(lavare.id, [item.id]);
+  });
+
+  wrap.append(swipeAct, btn);
+  return wrap;
 }
 
 /**
@@ -589,6 +753,9 @@ function initEvents() {
 
   // Refresh
   document.getElementById('refreshBtn').addEventListener('click', loadData);
+
+  // Bulk bar: cancel
+  document.getElementById('bulkCancel').addEventListener('click', exitSelectMode);
 
   // Sheet close
   document.getElementById('sheetClose').addEventListener('click', closeSheet);

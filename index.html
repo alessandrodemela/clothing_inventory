@@ -67,6 +67,15 @@
 
   </div>
 
+  <!-- Bulk action bar: appears when selecting multiple items -->
+  <div class="bulk-bar" id="bulkBar" hidden>
+    <div class="bulk-info">
+      <span id="bulkCount" class="bulk-count">0 selezionati</span>
+      <button id="bulkCancel" class="bulk-cancel-btn" type="button" aria-label="Annulla selezione">Annulla</button>
+    </div>
+    <div class="bulk-locations" id="bulkLocations"></div>
+  </div>
+
   <!-- Bottom sheet: item detail -->
   <div class="sheet-overlay" id="sheetOverlay" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" id="sheet">
