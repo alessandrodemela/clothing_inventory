@@ -331,6 +331,7 @@ function buildItemRow(item) {
     const t = e.touches[0];
     const dx = t.clientX - t0x;
     const dy = t.clientY - t0y;
+    console.log('touchmove: dx=', dx, 'dy=', dy, 'swipeMode=', swipeMode);
 
     // Scroll verticale — annulla tutto
     if (!swipeMode && Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
