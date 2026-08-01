@@ -34,11 +34,7 @@ const state = {
 async function fetchAll() {
   const [itemsRes, catsRes, locsRes] = await Promise.all([
     db.from('clothing_items')
-      .select(`
-        id, name, brand, color, size, notes, created_at, updated_at,
-        category:categories(id, name, icon),
-        location:locations(id, name, icon)
-      `)
+      .select('id, name, brand, color, size, notes, created_at, updated_at, category_id, location_id')
       .order('name'),
 
     db.from('categories').select('*').order('sort_order'),
@@ -49,8 +45,18 @@ async function fetchAll() {
   if (catsRes.error)  throw catsRes.error;
   if (locsRes.error)  throw locsRes.error;
 
+  // Manual join in JS — matcher items con categorie e posizioni
+  const catsMap = Object.fromEntries(catsRes.data.map(c => [c.id, c]));
+  const locsMap = Object.fromEntries(locsRes.data.map(l => [l.id, l]));
+
+  const items = itemsRes.data.map(item => ({
+    ...item,
+    category: catsMap[item.category_id] ?? null,
+    location: locsMap[item.location_id] ?? null,
+  }));
+
   return {
-    items: itemsRes.data,
+    items,
     categories: catsRes.data,
     locations: locsRes.data,
   };
