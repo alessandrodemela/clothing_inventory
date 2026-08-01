@@ -211,11 +211,17 @@ function buildItemRow(item) {
   wrap.dataset.id = item.id;
   if (state.selectedIds.has(item.id)) wrap.classList.add('is-selected');
 
-  // Hidden action revealed by swiping left
-  const swipeAct = document.createElement('div');
-  swipeAct.className = 'swipe-action';
-  swipeAct.setAttribute('aria-hidden', 'true');
-  swipeAct.textContent = '🧺';
+  // Swipe action sinistra → lavare
+  const swipeActL = document.createElement('div');
+  swipeActL.className = 'swipe-action swipe-action--left';
+  swipeActL.setAttribute('aria-hidden', 'true');
+  swipeActL.textContent = '🧺';
+
+  // Swipe action destra → in uso
+  const swipeActR = document.createElement('div');
+  swipeActR.className = 'swipe-action swipe-action--right';
+  swipeActR.setAttribute('aria-hidden', 'true');
+  swipeActR.textContent = '🧍';
 
   // ── Item button ───────────────────────────────────────────────────────────
   const btn = document.createElement('button');
@@ -264,15 +270,52 @@ function buildItemRow(item) {
 
   btn.append(check, swatch, info, tagWrap);
 
-  // ── Touch: long-press + swipe-left ────────────────────────────────────────
+  // ── Touch: long-press + swipe left (lavare) + swipe right (in uso) ─────────
+  //
+  // Soglie:
+  //   dx < -PEEK  → reveal parziale icona sinistra
+  //   dx < -FULL  → commit immediato "a lavare" (Apple Mail style)
+  //   dx >  FULL  → commit immediato "in uso"
+  //
+  const PEEK = 20;   // px prima di entrare in swipe mode
+  const SNAP = 72;   // px revealed (snap position)
+  const FULL = 160;  // px per commit automatico
+
   let lpTimer = null;
   let t0x = 0, t0y = 0;
-  let swipeMode = false, swipeRevealed = false;
+  let swipeDir = 0;   // -1 sx | 0 nessuno | +1 dx
+  let swipeMode = false;
+
+  function snapBack() {
+    btn.style.transition = 'transform 0.2s ease';
+    btn.style.transform = '';
+    swipeActL.style.opacity = '0';
+    swipeActR.style.opacity = '0';
+    setTimeout(() => { btn.style.transition = ''; }, 210);
+  }
+
+  function commitAction(dir) {
+    // Animazione "vola via" poi aggiorna
+    btn.style.transition = 'transform 0.18s ease';
+    btn.style.transform = dir < 0 ? 'translateX(-110%)' : 'translateX(110%)';
+    setTimeout(() => {
+      btn.style.transition = '';
+      btn.style.transform = '';
+      if (dir < 0) {
+        const lavare = state.locations.find(l => l.name === 'Lavare');
+        if (lavare) bulkMoveTo(lavare.id, [item.id]);
+      } else {
+        const inUso = state.locations.find(l => l.name === 'In uso');
+        if (inUso) bulkMoveTo(inUso.id, [item.id]);
+      }
+    }, 180);
+  }
 
   btn.addEventListener('touchstart', e => {
     const t = e.touches[0];
     t0x = t.clientX; t0y = t.clientY;
     swipeMode = false;
+    swipeDir = 0;
 
     lpTimer = setTimeout(() => {
       lpTimer = null;
@@ -284,61 +327,70 @@ function buildItemRow(item) {
   }, { passive: true });
 
   btn.addEventListener('touchmove', e => {
+    if (state.selecting) return;
     const t = e.touches[0];
     const dx = t.clientX - t0x;
     const dy = t.clientY - t0y;
 
-    // Vertical scroll cancels everything
-    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+    // Scroll verticale — annulla tutto
+    if (!swipeMode && Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
       clearTimeout(lpTimer); lpTimer = null;
       return;
     }
-    // Swipe left (only outside selection mode)
-    if (dx < -8 && !state.selecting) {
+
+    if (Math.abs(dx) > PEEK) {
       swipeMode = true;
+      swipeDir = dx < 0 ? -1 : 1;
       clearTimeout(lpTimer); lpTimer = null;
-      const offset = Math.max(dx, -72);
+    }
+
+    if (!swipeMode) return;
+
+    if (swipeDir < 0) {
+      // ── Swipe sinistra → lavare ──────────────────────────────────────────
+      const offset = Math.max(dx, -FULL - 20);
       btn.style.transform = `translateX(${offset}px)`;
-      swipeAct.style.opacity = Math.min(1, Math.abs(offset) / 72).toFixed(2);
+      const progress = Math.min(1, Math.abs(offset) / SNAP);
+      swipeActL.style.opacity = progress.toFixed(2);
+      // Feedback visivo soglia FULL: icona diventa piena
+      swipeActL.classList.toggle('swipe-action--commit', offset < -FULL);
+    } else {
+      // ── Swipe destra → in uso ────────────────────────────────────────────
+      const offset = Math.min(dx, FULL + 20);
+      btn.style.transform = `translateX(${offset}px)`;
+      const progress = Math.min(1, offset / SNAP);
+      swipeActR.style.opacity = progress.toFixed(2);
+      swipeActR.classList.toggle('swipe-action--commit', offset > FULL);
     }
   }, { passive: true });
 
   btn.addEventListener('touchend', e => {
     clearTimeout(lpTimer); lpTimer = null;
-    if (swipeMode) {
-      const dx = e.changedTouches[0].clientX - t0x;
-      if (dx < -52) {
-        btn.style.transform = 'translateX(-72px)';
-        swipeAct.style.opacity = '1';
-        swipeRevealed = true;
-      } else {
-        btn.style.transform = '';
-        swipeAct.style.opacity = '0';
-        swipeRevealed = false;
-      }
-      swipeMode = false;
+    if (!swipeMode) return;
+
+    const dx = e.changedTouches[0].clientX - t0x;
+
+    if (dx < -FULL) {
+      commitAction(-1);
+    } else if (dx > FULL) {
+      commitAction(1);
+    } else {
+      snapBack();
     }
+
+    swipeMode = false;
+    swipeDir = 0;
+    swipeActL.classList.remove('swipe-action--commit');
+    swipeActR.classList.remove('swipe-action--commit');
   });
 
-  // ── Click ─────────────────────────────────────────────────────────────────
+  // ── Click (fallback se swipe non scattato) ────────────────────────────────
   btn.addEventListener('click', () => {
-    if (swipeRevealed) {
-      btn.style.transform = '';
-      swipeAct.style.opacity = '0';
-      swipeRevealed = false;
-      return;
-    }
-    if (state.selecting) toggleSelect(item.id);
-    else openSheet(item);
+    if (state.selecting) { toggleSelect(item.id); return; }
+    openSheet(item);
   });
 
-  // ── Swipe action tap → metti a lavare ────────────────────────────────────
-  swipeAct.addEventListener('click', () => {
-    const lavare = state.locations.find(l => l.name === 'Lavare');
-    if (lavare) bulkMoveTo(lavare.id, [item.id]);
-  });
-
-  wrap.append(swipeAct, btn);
+  wrap.append(swipeActR, swipeActL, btn);
   return wrap;
 }
 
