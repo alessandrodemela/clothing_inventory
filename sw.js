@@ -5,7 +5,7 @@
    • Tutto il resto → Cache-first  (shell offline immediata)
    ========================================================================== */
 
-const CACHE = 'guardaroba-v4';
+const CACHE = 'guardaroba-v6s';
 
 const PRECACHE = [
   '/index.html',

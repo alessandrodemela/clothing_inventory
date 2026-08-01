@@ -353,7 +353,8 @@ function buildItemRow(item) {
       btn.style.transform = `translateX(${offset}px)`;
       const progress = Math.min(1, Math.abs(offset) / SNAP);
       swipeActL.style.opacity = progress.toFixed(2);
-      // Feedback visivo soglia FULL: icona diventa piena
+      // Background si propaga lungo lo swipe
+      wrap.classList.toggle('swipe-left', Math.abs(offset) > 10);
       swipeActL.classList.toggle('swipe-action--commit', offset < -FULL);
     } else {
       // ── Swipe destra → in uso ────────────────────────────────────────────
@@ -361,6 +362,8 @@ function buildItemRow(item) {
       btn.style.transform = `translateX(${offset}px)`;
       const progress = Math.min(1, offset / SNAP);
       swipeActR.style.opacity = progress.toFixed(2);
+      // Background si propaga lungo lo swipe
+      wrap.classList.toggle('swipe-right', offset > 10);
       swipeActR.classList.toggle('swipe-action--commit', offset > FULL);
     }
   }, { passive: true });
@@ -381,6 +384,7 @@ function buildItemRow(item) {
 
     swipeMode = false;
     swipeDir = 0;
+    wrap.classList.remove('swipe-left', 'swipe-right');
     swipeActL.classList.remove('swipe-action--commit');
     swipeActR.classList.remove('swipe-action--commit');
   });

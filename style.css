@@ -408,6 +408,8 @@ button, input {
   min-height: 52px;
   user-select: none;
   -webkit-user-select: none;
+  position: relative;
+  z-index: 2;
 }
 
 .item-row:active {
@@ -536,6 +538,16 @@ button, input {
   border-radius: var(--radius-sm);
   user-select: none;
   -webkit-user-select: none;
+  background: var(--surface);
+  transition: background 0.15s ease;
+}
+
+.swipe-wrap.swipe-left {
+  background: var(--danger);
+}
+
+.swipe-wrap.swipe-right {
+  background: #3a6e4e;
 }
 
 .swipe-action {
@@ -548,8 +560,8 @@ button, input {
   justify-content: center;
   font-size: 22px;
   opacity: 0;
-  pointer-events: none;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, opacity 0.05s linear;
+  z-index: 1;
 }
 
 .swipe-action--left {
