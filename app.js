@@ -15,7 +15,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ─── App state ──────────────────────────────────────────────────────────────
 
 const state = {
-  items: [],          // clothing_items joined with category + location
+  items: [],          // clothing_items_test joined with category + location
   categories: [],
   locations: [],
   view: 'category',   // 'category' | 'location'
@@ -35,8 +35,8 @@ async function fetchAll() {
     db.from('clothing_items')
       .select(`
         id, name, brand, color, size, notes, created_at, updated_at,
-        category:categories(id, name, icon),
-        location:locations(id, name, icon)
+        category:categories_clothing!category_id(id, name, icon),
+        location:locations!location_id(id, name, icon)
       `)
       .order('name'),
 
