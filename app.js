@@ -15,7 +15,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ─── App state ──────────────────────────────────────────────────────────────
 
 const state = {
-  items: [],          // clothing_items_test joined with category + location
+  items: [],          // clothing_items joined with category + location
   categories: [],
   locations: [],
   view: 'category',   // 'category' | 'location'
@@ -33,16 +33,16 @@ const state = {
 
 async function fetchAll() {
   const [itemsRes, catsRes, locsRes] = await Promise.all([
-    db.from('clothing_items_test')
+    db.from('clothing_items')
       .select(`
         id, name, brand, color, size, notes, created_at, updated_at,
-        category:categories_test(id, name, icon),
-        location:locations_test(id, name, icon)
+        category:categories(id, name, icon),
+        location:locations(id, name, icon)
       `)
       .order('name'),
 
-    db.from('categories_test').select('*').order('sort_order'),
-    db.from('locations_test').select('*').order('sort_order'),
+    db.from('categories').select('*').order('sort_order'),
+    db.from('locations').select('*').order('sort_order'),
   ]);
 
   if (itemsRes.error) throw itemsRes.error;
@@ -116,7 +116,7 @@ async function bulkMoveTo(locationId, ids) {
   if (!targetIds.length) return;
 
   const { error } = await db
-    .from('clothing_items_test')
+    .from('clothing_items')
     .update({ location_id: locationId })
     .in('id', targetIds);
 
@@ -140,16 +140,16 @@ async function saveItem(data, id = null) {
   };
 
   if (id) {
-    const { error } = await db.from('clothing_items_test').update(payload).eq('id', id);
+    const { error } = await db.from('clothing_items').update(payload).eq('id', id);
     if (error) throw error;
   } else {
-    const { error } = await db.from('clothing_items_test').insert(payload);
+    const { error } = await db.from('clothing_items').insert(payload);
     if (error) throw error;
   }
 }
 
 async function deleteItem(id) {
-  const { error } = await db.from('clothing_items_test').delete().eq('id', id);
+  const { error } = await db.from('clothing_items').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -854,33 +854,36 @@ function buildForm(item) {
     const getCatId = () => container.querySelector('.form-chips[data-name="category_id"] .form-chip--active')?.dataset.value ?? null;
     const getLocId = () => container.querySelector('.form-chips[data-name="location_id"] .form-chip--active')?.dataset.value ?? null;
 
-    const data = {
-      name:        getName(),
-      category_id: getCatId(),
-      location_id: getLocId(),
-      brand:       container.querySelector('#f-brand')?.value  ?? '',
-      color:       container.querySelector('#f-color')?.value  ?? '',
-      size:        container.querySelector('#f-size')?.value   ?? '',
-      notes:       container.querySelector('#f-notes')?.value  ?? '',
-    };
+    const catId = getCatId();
+    const locId = getLocId();
 
     // Validation
-    if (!data.name.trim()) {
+    if (!getName().trim()) {
       errMsg.textContent = 'Il nome è obbligatorio.';
       errMsg.hidden = false;
       container.querySelector('#f-name')?.focus();
       return;
     }
-    if (!data.category_id) {
+    if (!catId) {
       errMsg.textContent = 'Seleziona una categoria.';
       errMsg.hidden = false;
       return;
     }
-    if (!data.location_id) {
+    if (!locId) {
       errMsg.textContent = 'Seleziona una posizione.';
       errMsg.hidden = false;
       return;
     }
+
+    const data = {
+      name:        getName(),
+      category_id: catId,
+      location_id: locId,
+      brand:       container.querySelector('#f-brand')?.value  ?? '',
+      color:       container.querySelector('#f-color')?.value  ?? '',
+      size:        container.querySelector('#f-size')?.value   ?? '',
+      notes:       container.querySelector('#f-notes')?.value  ?? '',
+    };
     errMsg.hidden = true;
 
     saveBtn.disabled = true;
