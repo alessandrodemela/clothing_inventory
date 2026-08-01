@@ -26,22 +26,23 @@ const state = {
   selecting: false,       // whether bulk-select mode is active
   loading: false,
   error: null,
+  formItem: null,     // null = new, object = editing existing item
 };
 
 // ─── Data layer ─────────────────────────────────────────────────────────────
 
 async function fetchAll() {
   const [itemsRes, catsRes, locsRes] = await Promise.all([
-    db.from('clothing_items')
+    db.from('clothing_items_test')
       .select(`
         id, name, brand, color, size, notes, created_at, updated_at,
-        category:categories_clothing!category_id(id, name, icon),
-        location:locations!location_id(id, name, icon)
+        category:categories_test(id, name, icon),
+        location:locations_test(id, name, icon)
       `)
       .order('name'),
 
-    db.from('categories_clothing').select('*').order('sort_order'),
-    db.from('locations').select('*').order('sort_order'),
+    db.from('categories_test').select('*').order('sort_order'),
+    db.from('locations_test').select('*').order('sort_order'),
   ]);
 
   if (itemsRes.error) throw itemsRes.error;
@@ -115,7 +116,7 @@ async function bulkMoveTo(locationId, ids) {
   if (!targetIds.length) return;
 
   const { error } = await db
-    .from('clothing_items')
+    .from('clothing_items_test')
     .update({ location_id: locationId })
     .in('id', targetIds);
 
@@ -123,6 +124,33 @@ async function bulkMoveTo(locationId, ids) {
 
   exitSelectMode();
   await loadData();
+}
+
+// ─── Add / Edit / Delete ─────────────────────────────────────────────────────
+
+async function saveItem(data, id = null) {
+  const payload = {
+    name:        data.name.trim(),
+    category_id: data.category_id || null,
+    location_id: data.location_id || null,
+    brand:       data.brand.trim()  || null,
+    color:       data.color.trim()  || null,
+    size:        data.size.trim()   || null,
+    notes:       data.notes.trim()  || null,
+  };
+
+  if (id) {
+    const { error } = await db.from('clothing_items_test').update(payload).eq('id', id);
+    if (error) throw error;
+  } else {
+    const { error } = await db.from('clothing_items_test').insert(payload);
+    if (error) throw error;
+  }
+}
+
+async function deleteItem(id) {
+  const { error } = await db.from('clothing_items_test').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // ─── Selection mode ───────────────────────────────────────────────────────────
@@ -331,7 +359,7 @@ function buildItemRow(item) {
     const t = e.touches[0];
     const dx = t.clientX - t0x;
     const dy = t.clientY - t0y;
-    console.log('touchmove: dx=', dx, 'dy=', dy, 'swipeMode=', swipeMode);
+
 
     // Scroll verticale — annulla tutto
     if (!swipeMode && Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
@@ -636,6 +664,262 @@ function renderStats() {
   });
 }
 
+// ─── Form sheet (add / edit) ─────────────────────────────────────────────────
+
+function openFormSheet(item = null) {
+  state.formItem = item;
+  const overlay = document.getElementById('formOverlay');
+  const formContent = document.getElementById('formContent');
+  formContent.innerHTML = '';
+  formContent.appendChild(buildForm(item));
+  overlay.hidden = false;
+  requestAnimationFrame(() => overlay.classList.add('is-visible'));
+  document.body.style.overflow = 'hidden';
+  // Focus first input after animation
+  setTimeout(() => formContent.querySelector('.form-input')?.focus(), 260);
+}
+
+function closeFormSheet() {
+  const overlay = document.getElementById('formOverlay');
+  overlay.classList.remove('is-visible');
+  overlay.addEventListener('transitionend', () => {
+    overlay.hidden = true;
+    document.body.style.overflow = '';
+    state.formItem = null;
+  }, { once: true });
+}
+
+function buildForm(item) {
+  const isEdit = !!item;
+  const frag = document.createDocumentFragment();
+
+  // Title
+  const title = document.createElement('h2');
+  title.className = 'sheet-title';
+  title.textContent = isEdit ? 'Modifica capo' : 'Nuovo capo';
+  frag.appendChild(title);
+
+  // Helper: text input row
+  function fieldRow(labelText, name, value = '', placeholder = '') {
+    const wrap = document.createElement('div');
+    wrap.className = 'form-field';
+    const label = document.createElement('label');
+    label.className = 'form-label';
+    label.htmlFor = 'f-' + name;
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'f-' + name;
+    input.name = name;
+    input.className = 'form-input';
+    input.value = value ?? '';
+    input.placeholder = placeholder;
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    wrap.append(label, input);
+    return wrap;
+  }
+
+  // Helper: chip picker (single select)
+  function chipPicker(labelText, name, options, selectedId) {
+    const wrap = document.createElement('div');
+    wrap.className = 'form-field';
+    const label = document.createElement('label');
+    label.className = 'form-label';
+    label.textContent = labelText;
+    const row = document.createElement('div');
+    row.className = 'form-chips';
+    row.dataset.name = name;
+
+    options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'form-chip' + (opt.id === selectedId ? ' form-chip--active' : '');
+      btn.dataset.value = opt.id;
+      btn.textContent = (opt.icon ? opt.icon + ' ' : '') + opt.name;
+      btn.addEventListener('click', () => {
+        // toggle: click active → deselect
+        const isActive = btn.classList.contains('form-chip--active');
+        row.querySelectorAll('.form-chip').forEach(b => b.classList.remove('form-chip--active'));
+        if (!isActive) btn.classList.add('form-chip--active');
+      });
+      row.appendChild(btn);
+    });
+
+    wrap.append(label, row);
+    return wrap;
+  }
+
+  // ── Required fields ──────────────────────────────────────────────────────
+  const reqSection = document.createElement('div');
+  reqSection.className = 'form-section';
+
+  const nameField = fieldRow('Nome *', 'name', item?.name ?? '', 'es. Felpa grigia Carhartt');
+  // Mark name as required
+  nameField.querySelector('input').required = true;
+
+  reqSection.append(
+    nameField,
+    chipPicker('Categoria *', 'category_id', state.categories, item?.category?.id ?? null),
+    chipPicker('Posizione *', 'location_id', state.locations,  item?.location?.id  ?? null),
+  );
+  frag.appendChild(reqSection);
+
+  // ── Optional fields (collapsible) ────────────────────────────────────────
+  const optToggle = document.createElement('button');
+  optToggle.type = 'button';
+  optToggle.className = 'form-opt-toggle';
+  const hasOptData = item && (item.brand || item.color || item.size || item.notes);
+  optToggle.textContent = hasOptData ? '▾ Dettagli aggiuntivi' : '▸ Dettagli aggiuntivi';
+
+  const optSection = document.createElement('div');
+  optSection.className = 'form-section form-opt-section' + (hasOptData ? ' is-open' : '');
+
+  optSection.append(
+    fieldRow('Marca', 'brand', item?.brand ?? '', 'es. Levi\u2019s'),
+    fieldRow('Colore', 'color', item?.color ?? '', 'es. blu navy'),
+    fieldRow('Taglia', 'size', item?.size ?? '', 'es. M'),
+  );
+
+  // Notes textarea
+  const notesWrap = document.createElement('div');
+  notesWrap.className = 'form-field';
+  const notesLabel = document.createElement('label');
+  notesLabel.className = 'form-label';
+  notesLabel.htmlFor = 'f-notes';
+  notesLabel.textContent = 'Note';
+  const notesTA = document.createElement('textarea');
+  notesTA.id = 'f-notes';
+  notesTA.name = 'notes';
+  notesTA.className = 'form-input form-textarea';
+  notesTA.value = item?.notes ?? '';
+  notesTA.placeholder = 'Dettagli, occasioni d\u2019uso\u2026';
+  notesTA.rows = 3;
+  notesWrap.append(notesLabel, notesTA);
+  optSection.appendChild(notesWrap);
+
+  optToggle.addEventListener('click', () => {
+    const open = optSection.classList.toggle('is-open');
+    optToggle.textContent = open ? '▾ Dettagli aggiuntivi' : '▸ Dettagli aggiuntivi';
+  });
+
+  frag.append(optToggle, optSection);
+
+  // ── Error message ────────────────────────────────────────────────────────
+  const errMsg = document.createElement('p');
+  errMsg.className = 'form-error';
+  errMsg.hidden = true;
+  frag.appendChild(errMsg);
+
+  // ── Action buttons ───────────────────────────────────────────────────────
+  const actions = document.createElement('div');
+  actions.className = 'form-actions';
+
+  // Delete button (edit mode only)
+  if (isEdit) {
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'form-btn form-btn--danger';
+    delBtn.textContent = 'Elimina capo';
+    delBtn.addEventListener('click', async () => {
+      if (!confirm(`Eliminare "${item.name}"?`)) return;
+      delBtn.disabled = true;
+      delBtn.textContent = 'Eliminazione…';
+      try {
+        await deleteItem(item.id);
+        closeFormSheet();
+        closeSheet();
+        await loadData();
+      } catch (e) {
+        errMsg.textContent = 'Errore: ' + (e.message ?? e);
+        errMsg.hidden = false;
+        delBtn.disabled = false;
+        delBtn.textContent = 'Elimina capo';
+      }
+    });
+    actions.appendChild(delBtn);
+  }
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'form-btn form-btn--primary';
+  saveBtn.textContent = isEdit ? 'Salva modifiche' : 'Aggiungi capo';
+
+  saveBtn.addEventListener('click', async () => {
+    // Collect values
+    const formEl = frag; // not a real form — read from DOM
+    const container = document.getElementById('formContent');
+
+    const getName  = () => container.querySelector('#f-name')?.value ?? '';
+    const getCatId = () => container.querySelector('.form-chips[data-name="category_id"] .form-chip--active')?.dataset.value ?? null;
+    const getLocId = () => container.querySelector('.form-chips[data-name="location_id"] .form-chip--active')?.dataset.value ?? null;
+
+    const data = {
+      name:        getName(),
+      category_id: getCatId(),
+      location_id: getLocId(),
+      brand:       container.querySelector('#f-brand')?.value  ?? '',
+      color:       container.querySelector('#f-color')?.value  ?? '',
+      size:        container.querySelector('#f-size')?.value   ?? '',
+      notes:       container.querySelector('#f-notes')?.value  ?? '',
+    };
+
+    // Validation
+    if (!data.name.trim()) {
+      errMsg.textContent = 'Il nome è obbligatorio.';
+      errMsg.hidden = false;
+      container.querySelector('#f-name')?.focus();
+      return;
+    }
+    if (!data.category_id) {
+      errMsg.textContent = 'Seleziona una categoria.';
+      errMsg.hidden = false;
+      return;
+    }
+    if (!data.location_id) {
+      errMsg.textContent = 'Seleziona una posizione.';
+      errMsg.hidden = false;
+      return;
+    }
+    errMsg.hidden = true;
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = isEdit ? 'Salvataggio…' : 'Aggiunta…';
+
+    try {
+      await saveItem(data, isEdit ? item.id : null);
+      closeFormSheet();
+      if (isEdit) closeSheet();
+      await loadData();
+
+      // Flash the newly added/edited item
+      if (!isEdit) {
+        setTimeout(() => {
+          const match = [...document.querySelectorAll('.swipe-wrap')].find(
+            el => el.querySelector('.item-name')?.textContent === data.name.trim()
+          );
+          if (match) {
+            match.classList.add('flash-new');
+            match.addEventListener('animationend', () => match.classList.remove('flash-new'), { once: true });
+          }
+        }, 100);
+      }
+    } catch (e) {
+      errMsg.textContent = 'Errore: ' + (e.message ?? e);
+      errMsg.hidden = false;
+      saveBtn.disabled = false;
+      saveBtn.textContent = isEdit ? 'Salva modifiche' : 'Aggiungi capo';
+    }
+  });
+
+  actions.appendChild(saveBtn);
+  frag.appendChild(actions);
+
+  const container = document.createElement('div');
+  container.appendChild(frag);
+  return container;
+}
+
 // ─── Detail sheet ────────────────────────────────────────────────────────────
 
 function openSheet(item) {
@@ -698,10 +982,26 @@ function openSheet(item) {
   }
 
   sheetContent.innerHTML = '';
+
+  const titleRow = document.createElement('div');
+  titleRow.className = 'sheet-title-row';
+
   const title = document.createElement('h2');
   title.className = 'sheet-title';
   title.textContent = item.name;
-  sheetContent.append(title, tagsDiv, dl);
+
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'sheet-edit-btn';
+  editBtn.setAttribute('aria-label', 'Modifica capo');
+  editBtn.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Modifica`;
+  editBtn.addEventListener('click', () => {
+    closeSheet();
+    setTimeout(() => openFormSheet(item), 220);
+  });
+
+  titleRow.append(title, editBtn);
+  sheetContent.append(titleRow, tagsDiv, dl);
 
   overlay.hidden = false;
   // rAF needed so the transition fires after display:block
@@ -814,13 +1114,26 @@ function initEvents() {
   // Bulk bar: cancel
   document.getElementById('bulkCancel').addEventListener('click', exitSelectMode);
 
-  // Sheet close
+  // Detail sheet close
   document.getElementById('sheetClose').addEventListener('click', closeSheet);
   document.getElementById('sheetOverlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeSheet();
   });
+
+  // Form sheet close
+  document.getElementById('formClose').addEventListener('click', closeFormSheet);
+  document.getElementById('formOverlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeFormSheet();
+  });
+
+  // FAB → open blank form
+  document.getElementById('fab').addEventListener('click', () => openFormSheet());
+
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeSheet();
+    if (e.key === 'Escape') {
+      if (!document.getElementById('formOverlay').hidden) { closeFormSheet(); return; }
+      closeSheet();
+    }
   });
 }
 
