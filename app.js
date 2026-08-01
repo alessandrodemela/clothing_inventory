@@ -15,7 +15,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ─── App state ──────────────────────────────────────────────────────────────
 
 const state = {
-  items: [],          // clothing_items_test joined with category + location
+  items: [],          // clothing_items joined with category + location
   categories: [],
   locations: [],
   view: 'category',   // 'category' | 'location'
@@ -32,16 +32,16 @@ const state = {
 
 async function fetchAll() {
   const [itemsRes, catsRes, locsRes] = await Promise.all([
-    db.from('clothing_items_test')
+    db.from('clothing_items')
       .select(`
         id, name, brand, color, size, notes, created_at, updated_at,
-        category:categories_test(id, name, icon),
-        location:locations_test(id, name, icon)
+        category:categories(id, name, icon),
+        location:locations(id, name, icon)
       `)
       .order('name'),
 
-    db.from('categories_test').select('*').order('sort_order'),
-    db.from('locations_test').select('*').order('sort_order'),
+    db.from('categories_clothing').select('*').order('sort_order'),
+    db.from('locations').select('*').order('sort_order'),
   ]);
 
   if (itemsRes.error) throw itemsRes.error;
@@ -115,7 +115,7 @@ async function bulkMoveTo(locationId, ids) {
   if (!targetIds.length) return;
 
   const { error } = await db
-    .from('clothing_items_test')
+    .from('clothing_items')
     .update({ location_id: locationId })
     .in('id', targetIds);
 
