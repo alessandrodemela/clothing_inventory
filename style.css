@@ -583,6 +583,10 @@ button, input {
   background: var(--accent-dim);
 }
 
+.swipe-wrap.is-selected .item-check {
+  opacity: 1;
+}
+
 .swipe-wrap.is-selected .item-check::before {
   content: '✓';
   display: inline-block;
