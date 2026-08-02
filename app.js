@@ -234,7 +234,10 @@ function tagEl(label, emoji = null, hue = null) {
   const span = document.createElement('span');
   span.className = hue !== null ? 'tag' : 'tag tag--plain';
   if (hue !== null) span.style.cssText = `--tag-hue:${hue}`;
-  span.textContent = emoji ? `${emoji} ${label}` : label;
+  const text = document.createElement('span');
+  text.className = 'tag-text';
+  text.textContent = emoji ? `${emoji} ${label}` : label;
+  span.appendChild(text);
   return span;
 }
 

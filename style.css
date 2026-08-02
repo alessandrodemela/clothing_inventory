@@ -51,6 +51,7 @@ html, body {
   color: var(--text);
   font-family: var(--font-body);
   -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
 }
 
 body {
@@ -484,6 +485,18 @@ button, input {
   border-color: var(--border);
   background: var(--surface);
   color: var(--text-dim);
+}
+
+/* Testo interno al tag: tronca con ellipsis se troppo lungo */
+.tag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Nelle righe item limita la larghezza del tag per non schiacciare il nome */
+.item-row .tag .tag-text {
+  max-width: 90px;
 }
 
 /* ==========================================================================
