@@ -164,7 +164,7 @@ async function deleteItem(id) {
 function enterSelectMode(firstItemId) {
   state.selecting = true;
   state.selectedIds.clear();
-  state.selectedIds.add(firstItemId);
+  state.selectedIds.add(String(firstItemId));
   document.body.classList.add('is-selecting');
   updateSelectVisuals();
   showBulkBar();
@@ -179,11 +179,12 @@ function exitSelectMode() {
 }
 
 function toggleSelect(itemId) {
-  if (state.selectedIds.has(itemId)) {
-    state.selectedIds.delete(itemId);
+  const sid = String(itemId);
+  if (state.selectedIds.has(sid)) {
+    state.selectedIds.delete(sid);
     if (state.selectedIds.size === 0) { exitSelectMode(); return; }
   } else {
-    state.selectedIds.add(itemId);
+    state.selectedIds.add(sid);
   }
   updateSelectVisuals();
 }
@@ -243,7 +244,7 @@ function buildItemRow(item) {
   const wrap = document.createElement('div');
   wrap.className = 'swipe-wrap';
   wrap.dataset.id = item.id;
-  if (state.selectedIds.has(item.id)) wrap.classList.add('is-selected');
+  if (state.selectedIds.has(String(item.id))) wrap.classList.add('is-selected');
 
   // Swipe action sinistra → lavare
   const swipeActL = document.createElement('div');
