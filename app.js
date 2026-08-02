@@ -255,11 +255,15 @@ function buildItemRow(item) {
   swipeActL.setAttribute('aria-hidden', 'true');
   swipeActL.textContent = '🧺';
 
-  // Swipe action destra → in uso
-  const swipeActR = document.createElement('div');
-  swipeActR.className = 'swipe-action swipe-action--right';
-  swipeActR.setAttribute('aria-hidden', 'true');
-  swipeActR.textContent = '🧍';
+  // Swipe action destra — pannello In uso (più vicino al capo)
+  const swipeActR1 = document.createElement('div');
+  swipeActR1.className = 'swipe-action swipe-action--right-uso';
+  swipeActR1.innerHTML = '<span class="swipe-action-emoji">🧍</span><span class="swipe-action-label">In uso</span>';
+
+  // Swipe action destra — pannello Armadio (più lontano)
+  const swipeActR2 = document.createElement('div');
+  swipeActR2.className = 'swipe-action swipe-action--right-armadio';
+  swipeActR2.innerHTML = '<span class="swipe-action-emoji">🗄️</span><span class="swipe-action-label">Armadio</span>';
 
   // ── Item button ───────────────────────────────────────────────────────────
   const btn = document.createElement('button');
@@ -308,37 +312,69 @@ function buildItemRow(item) {
 
   btn.append(check, swatch, info, tagWrap);
 
-  // ── Touch: long-press + swipe left (lavare) + swipe right (in uso) ─────────
+  // ── Touch: long-press + swipe left (lavare) + swipe right (scelta) ─────────
   //
-  // Soglie:
-  //   dx < -PEEK  → reveal parziale icona sinistra
-  //   dx < -FULL  → commit immediato "a lavare" (Apple Mail style)
-  //   dx >  FULL  → commit immediato "in uso"
+  // Swipe sinistra:
+  //   dx < -PEEK  → reveal icona lavare
+  //   dx < -FULL  → commit immediato "a lavare"
   //
-  const PEEK = 20;   // px prima di entrare in swipe mode
-  const SNAP = 72;   // px revealed (snap position)
-  const FULL = 160;  // px per commit automatico
+  // Swipe destra:
+  //   dx > PEEK   → reveal due pannelli (Armadio | In uso)
+  //   dx > FULL   → commit immediato "in uso"
+  //   rilascio parziale → snap a SNAP_R, scelta tra i due
+  //
+  const PEEK   = 20;   // px prima di entrare in swipe mode
+  const SNAP_L = 72;   // px reveal per icona lavare
+  const SNAP_R = 140;  // px snap per mostrare entrambe le scelte destra
+  const FULL   = 200;  // px per commit automatico
 
-  let lpTimer = null;
+  let lpTimer   = null;
   let t0x = 0, t0y = 0;
-  let swipeDir = 0;   // -1 sx | 0 nessuno | +1 dx
+  let swipeDir  = 0;      // -1 sx | 0 nessuno | +1 dx
   let swipeMode = false;
+  let isSnappedR = false; // true quando siamo in modalità scelta destra aperta
 
   function snapBack() {
+    isSnappedR = false;
     btn.style.transition = 'transform 0.2s ease';
     btn.style.transform = '';
-    swipeActL.style.opacity = '0';
-    swipeActR.style.opacity = '0';
+    swipeActL.style.opacity  = '0';
+    swipeActR1.style.opacity = '0';
+    swipeActR2.style.opacity = '0';
+    wrap.classList.remove('swipe-left', 'swipe-right');
     setTimeout(() => { btn.style.transition = ''; }, 210);
   }
 
-  function commitAction(dir) {
-    // Animazione "vola via" poi aggiorna
+  function snapToChoices() {
+    isSnappedR = true;
+    btn.style.transition = 'transform 0.22s cubic-bezier(0.32,0.72,0,1)';
+    btn.style.transform  = `translateX(${SNAP_R}px)`;
+    swipeActR1.style.opacity = '1';
+    swipeActR2.style.opacity = '1';
+    wrap.classList.add('swipe-right');
+    setTimeout(() => { btn.style.transition = ''; }, 230);
+  }
+
+  function commitToLocation(locationId, flyRight = true) {
+    isSnappedR = false;
     btn.style.transition = 'transform 0.18s ease';
-    btn.style.transform = dir < 0 ? 'translateX(-110%)' : 'translateX(110%)';
+    btn.style.transform  = flyRight ? 'translateX(110%)' : 'translateX(-110%)';
+    swipeActR1.style.opacity = '0';
+    swipeActR2.style.opacity = '0';
+    wrap.classList.remove('swipe-right');
     setTimeout(() => {
       btn.style.transition = '';
-      btn.style.transform = '';
+      btn.style.transform  = '';
+      bulkMoveTo(locationId, [item.id]);
+    }, 180);
+  }
+
+  function commitAction(dir) {
+    btn.style.transition = 'transform 0.18s ease';
+    btn.style.transform  = dir < 0 ? 'translateX(-110%)' : 'translateX(110%)';
+    setTimeout(() => {
+      btn.style.transition = '';
+      btn.style.transform  = '';
       if (dir < 0) {
         const lavare = state.locations.find(l => l.name === 'Lavare');
         if (lavare) bulkMoveTo(lavare.id, [item.id]);
@@ -348,6 +384,21 @@ function buildItemRow(item) {
       }
     }, 180);
   }
+
+  // Tap sui pannelli destra per scegliere la destinazione
+  function addActionTap(el, locationName) {
+    const handler = e => {
+      e.stopPropagation();
+      if (!isSnappedR) return;
+      const loc = state.locations.find(l => l.name === locationName);
+      if (loc) commitToLocation(loc.id);
+    };
+    el.addEventListener('touchend', handler);
+    el.addEventListener('click',    handler);
+  }
+
+  addActionTap(swipeActR1, 'In uso');
+  addActionTap(swipeActR2, 'Armadio');
 
   btn.addEventListener('touchstart', e => {
     const t = e.touches[0];
@@ -389,25 +440,29 @@ function buildItemRow(item) {
       // ── Swipe sinistra → lavare ──────────────────────────────────────────
       const offset = Math.max(dx, -FULL - 20);
       btn.style.transform = `translateX(${offset}px)`;
-      const progress = Math.min(1, Math.abs(offset) / SNAP);
+      const progress = Math.min(1, Math.abs(offset) / SNAP_L);
       swipeActL.style.opacity = progress.toFixed(2);
-      // Background si propaga lungo lo swipe
       wrap.classList.toggle('swipe-left', Math.abs(offset) > 10);
       swipeActL.classList.toggle('swipe-action--commit', offset < -FULL);
     } else {
-      // ── Swipe destra → in uso ────────────────────────────────────────────
+      // ── Swipe destra → scelta (Armadio | In uso) ─────────────────────────
       const offset = Math.min(dx, FULL + 20);
       btn.style.transform = `translateX(${offset}px)`;
-      const progress = Math.min(1, offset / SNAP);
-      swipeActR.style.opacity = progress.toFixed(2);
-      // Background si propaga lungo lo swipe
+      // Entrambi i pannelli appaiono insieme con la progressione dello swipe
+      const progress = Math.min(1, offset / SNAP_R);
+      swipeActR1.style.opacity = progress.toFixed(2);
+      swipeActR2.style.opacity = progress.toFixed(2);
       wrap.classList.toggle('swipe-right', offset > 10);
-      swipeActR.classList.toggle('swipe-action--commit', offset > FULL);
+      swipeActR1.classList.toggle('swipe-action--commit', offset > FULL);
     }
   }, { passive: true });
 
   btn.addEventListener('touchend', e => {
     clearTimeout(lpTimer); lpTimer = null;
+
+    // Se siamo in modalità scelta aperta, tap sul capo → chiudi
+    if (isSnappedR) { snapBack(); return; }
+
     if (!swipeMode) return;
 
     const dx = e.changedTouches[0].clientX - t0x;
@@ -415,25 +470,29 @@ function buildItemRow(item) {
     if (dx < -FULL) {
       commitAction(-1);
     } else if (dx > FULL) {
+      // Full swipe destra → In uso diretto
       commitAction(1);
+    } else if (dx > PEEK) {
+      // Swipe parziale destra → mostra scelte
+      snapToChoices();
     } else {
       snapBack();
     }
 
     swipeMode = false;
-    swipeDir = 0;
-    wrap.classList.remove('swipe-left', 'swipe-right');
+    swipeDir  = 0;
     swipeActL.classList.remove('swipe-action--commit');
-    swipeActR.classList.remove('swipe-action--commit');
+    swipeActR1.classList.remove('swipe-action--commit');
   });
 
   // ── Click (fallback se swipe non scattato) ────────────────────────────────
   btn.addEventListener('click', () => {
+    if (isSnappedR) { snapBack(); return; }
     if (state.selecting) { toggleSelect(item.id); return; }
     openSheet(item);
   });
 
-  wrap.append(swipeActR, swipeActL, btn);
+  wrap.append(swipeActR2, swipeActR1, swipeActL, btn);
   return wrap;
 }
 

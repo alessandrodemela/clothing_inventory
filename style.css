@@ -560,31 +560,54 @@ button, input {
 }
 
 .swipe-wrap.swipe-right {
-  background: #3a6e4e;
+  background: #2a4a6e; /* armadio = blu scuro (layer più lontano) */
 }
 
 .swipe-action {
   position: absolute;
   top: 0;
-  width: 80px;
   height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  gap: 3px;
   opacity: 0;
-  transition: background 0.15s ease, opacity 0.05s linear;
+  transition: background 0.15s ease, opacity 0.08s linear;
   z-index: 1;
+}
+
+.swipe-action-emoji {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.swipe-action-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.85);
+  white-space: nowrap;
 }
 
 .swipe-action--left {
   right: 0;
+  width: 80px;
   background: var(--danger);
 }
 
-.swipe-action--right {
+/* Due pannelli per swipe destra */
+.swipe-action--right-uso {
+  left: 70px;
+  width: 70px;
+  background: #3a6e4e; /* verde — in uso */
+}
+
+.swipe-action--right-armadio {
   left: 0;
-  background: #3a6e4e; /* verde scuro per "in uso" */
+  width: 70px;
+  background: #2a4a6e; /* blu — armadio */
 }
 
 /* Quando si raggiunge la soglia di commit: background più intenso */
