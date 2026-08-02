@@ -37,7 +37,7 @@ async function fetchAll() {
       .select('id, name, brand, color, size, notes, created_at, updated_at, category_id, location_id')
       .order('name'),
 
-    db.from('categories').select('*').order('sort_order'),
+    db.from('categories_clothing').select('*').order('sort_order'),
     db.from('locations').select('*').order('sort_order'),
   ]);
 
